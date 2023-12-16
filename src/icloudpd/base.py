@@ -487,10 +487,10 @@ def download_builder(
                         "%s deduplicated",
                         truncate_middle(download_path, 96)
                     )
-                    file_size = os.stat(
-                    original_download_path or download_path).st_size
                     file_exists = os.path.isfile(download_path)
-                    if file_size != photo_size:
+                    file_size = os.stat(
+                    download_path).st_size if file_exists else 0
+                    if file_exists and file_size != photo_size:
                         logger.debug(
                             "%s has incorrect file size (%s vs %s)",
                             truncate_middle(download_path, 96),
