@@ -544,6 +544,8 @@ def download_builder(
                         if not dry_run:
                             download.set_utime(download_path, created_date)
                         file_size = os.stat(download_path).st_size
+                        version = photo.versions[download_size]
+                        photo_size = version["size"]
                         if file_size != photo_size:
                             logger.debug(
                                 "%s has incorrect file size (%s vs %s),begin to download again",
