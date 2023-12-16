@@ -69,7 +69,7 @@ class PyiCloudSession(Session):
 
         request_logger.debug("%s %s %s", method, url, kwargs.get("data", ""))
 
-        has_retried = kwargs.get("retried")
+        has_retried = kwargs.get("retried") or 0
         kwargs.pop("retried", None)
         response = super().request(method, url, **kwargs)
 
@@ -100,7 +100,7 @@ class PyiCloudSession(Session):
                 # pylint: disable=protected-access
                 fmip_url = self.service._get_webservice_url("findme")
                 if (
-                    has_retried is None
+                    has_retried == 0
                     and response.status_code in [421, 450, 500, 503]
                     and fmip_url in url
                 ):
@@ -113,17 +113,17 @@ class PyiCloudSession(Session):
 
                     except PyiCloudAPIResponseException:
                         LOGGER.debug("Re-authentication failed")
-                    kwargs["retried"] = True
+                    kwargs["retried"] = has_retried + 1
                     return self.request(method, url, **kwargs)
             except Exception:
                 pass
 
-            if has_retried is None and response.status_code in [421, 450, 500, 503]:
+            if has_retried < 4 and response.status_code in [421, 450, 500, 503]:
                 api_error = PyiCloudAPIResponseException(
                     response.reason, response.status_code, retry=True
                 )
                 request_logger.debug(api_error)
-                kwargs["retried"] = True
+                kwargs["retried"] = has_retried + 1
                 return self.request(method, url, **kwargs)
 
             self._raise_error(response.status_code, response.reason)
