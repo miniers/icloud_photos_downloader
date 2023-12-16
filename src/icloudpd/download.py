@@ -128,6 +128,8 @@ def download_media(
             if os.path.exists(download_path):
                 # 如果文件已经存在，那么只下载剩余的部分
                 start_byte = os.path.getsize(download_path)
+                logger.debug("Resuming download of %s at byte %d",
+                             photo.filename, start_byte)
             else:
                 # 如果文件不存在，那么从头开始下载
                 start_byte = 0
