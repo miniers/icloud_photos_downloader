@@ -111,7 +111,13 @@ def download_media(
 
     for retries in range(constants.MAX_RETRIES):
         try:
-            photo_response = photo.download(size)
+            if os.path.exists(download_path):
+                # 如果文件已经存在，那么只下载剩余的部分
+                start_byte = os.path.getsize(download_path)
+            else:
+                # 如果文件不存在，那么从头开始下载
+                start_byte = 0
+            photo_response = photo.download(size,headers={'Range': 'bytes=%d-' % start_byte})
             if photo_response:
                 return download_local(
                     logger, photo_response, download_path, photo.created)
