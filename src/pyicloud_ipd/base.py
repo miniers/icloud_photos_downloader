@@ -94,14 +94,14 @@ class PyiCloudSession(Session):
 
         if not response.ok and (
             content_type not in json_mimetypes
-            or response.status_code in [421, 450, 500]
+            or response.status_code in [421, 450, 500, 503]
         ):
             try:
                 # pylint: disable=protected-access
                 fmip_url = self.service._get_webservice_url("findme")
                 if (
                     has_retried is None
-                    and response.status_code in [421, 450, 500]
+                    and response.status_code in [421, 450, 500, 503]
                     and fmip_url in url
                 ):
                     # Handle re-authentication for Find My iPhone
@@ -118,7 +118,7 @@ class PyiCloudSession(Session):
             except Exception:
                 pass
 
-            if has_retried is None and response.status_code in [421, 450, 500]:
+            if has_retried is None and response.status_code in [421, 450, 500, 503]:
                 api_error = PyiCloudAPIResponseException(
                     response.reason, response.status_code, retry=True
                 )
