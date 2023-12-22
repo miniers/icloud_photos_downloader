@@ -81,6 +81,20 @@ def download_response_to_path(
     return True
 
 
+def append_response_to_path(
+        _logger: logging.Logger,
+        response,
+        download_path: str,
+        created_date: datetime.datetime) -> bool:
+    """ Saves response content into file with desired created date """
+    with open(download_path, "ab") as file_obj:
+        for chunk in response.iter_content(chunk_size=1024):
+            if chunk:
+                file_obj.write(chunk)
+    update_mtime(created_date, download_path)
+    return True
+
+
 def download_response_to_path_dry_run(
         logger: logging.Logger,
         _response,
@@ -113,9 +127,20 @@ def download_media(
 
     for retries in range(constants.MAX_RETRIES):
         try:
-            photo_response = photo.download(size)
+            if os.path.exists(download_path):
+                # 如果文件已经存在，那么只下载剩余的部分
+                start_byte = os.path.getsize(download_path)
+                logger.debug("Resuming download of %s at byte %d",
+                             photo.filename, start_byte)
+            else:
+                # 如果文件不存在，那么从头开始下载
+                start_byte = 0
+            photo_response = photo.download(size,headers={'Range': 'bytes=%d-' % start_byte})
             if photo_response:
-                return download_local(
+                download_func = append_response_to_path if start_byte else download_local
+                if dry_run:
+                    download_func = download_response_to_path_dry_run
+                return download_func(
                     logger, photo_response, download_path, photo.created)
 
             logger.error(

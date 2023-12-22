@@ -10,6 +10,7 @@ import http.cookiejar as cookielib
 import getpass
 
 from pyicloud_ipd.exceptions import (
+    PyiCloudConnectionException,
     PyiCloudFailedLoginException,
     PyiCloudAPIResponseException,
     PyiCloud2SARequiredException,
@@ -72,7 +73,7 @@ class PyiCloudSession(Session):
 
         request_logger.debug("%s %s %s", method, url, kwargs.get("data", ""))
 
-        has_retried = kwargs.get("retried")
+        has_retried = kwargs.get("retried") or 0
         kwargs.pop("retried", None)
         response = super().request(method, url, **kwargs)
 
@@ -99,14 +100,14 @@ class PyiCloudSession(Session):
 
         if not response.ok and (
             content_type not in json_mimetypes
-            or response.status_code in [421, 450, 500]
+            or response.status_code in [421, 450, 500, 503]
         ):
             try:
                 # pylint: disable=protected-access
                 fmip_url = self.service._get_webservice_url("findme")
                 if (
-                    has_retried is None
-                    and response.status_code in [421, 450, 500]
+                    has_retried == 0
+                    and response.status_code in [421, 450, 500, 503]
                     and fmip_url in url
                 ):
                     # Handle re-authentication for Find My iPhone
@@ -118,17 +119,17 @@ class PyiCloudSession(Session):
 
                     except PyiCloudAPIResponseException:
                         LOGGER.debug("Re-authentication failed")
-                    kwargs["retried"] = True
+                    kwargs["retried"] = has_retried + 1
                     return self.request(method, url, **kwargs)
             except Exception:
                 pass
 
-            if has_retried is None and response.status_code in [421, 450, 500]:
+            if has_retried < 4 and response.status_code in [421, 450, 500, 503]:
                 api_error = PyiCloudAPIResponseException(
                     response.reason, response.status_code, retry=True
                 )
                 request_logger.debug(api_error)
-                kwargs["retried"] = True
+                kwargs["retried"] = has_retried + 1
                 return self.request(method, url, **kwargs)
 
             self._raise_error(response.status_code, response.reason)
@@ -394,9 +395,9 @@ class PyiCloudService:
 
         # {'domainToUse': 'iCloud.com'}
         domain_to_use = self.data.get('domainToUse')
-        if domain_to_use != None:
-            msg = f'Apple insists on using {domain_to_use} for your request. Please use --domain parameter'
-            raise PyiCloudConnectionException(msg)
+        # if domain_to_use != None:
+        #     msg = f'Apple insists on using {domain_to_use} for your request. Please use --domain parameter'
+        #     raise PyiCloudConnectionException(msg)
 
     def _authenticate_with_credentials_service(self, service):
         """Authenticate to a specific service using credentials."""
@@ -433,7 +434,7 @@ class PyiCloudService:
             "Content-Type": "application/json",
             "X-Apple-OAuth-Client-Id": "d39ba9916b7251055b22c7f910e2ea796ee65e98b2ddecea8f5dde8d9d1a815d",
             "X-Apple-OAuth-Client-Type": "firstPartyAuth",
-            "X-Apple-OAuth-Redirect-URI": "https://www.icloud.com",
+            "X-Apple-OAuth-Redirect-URI": self.HOME_ENDPOINT,
             "X-Apple-OAuth-Require-Grant-Code": "true",
             "X-Apple-OAuth-Response-Mode": "web_message",
             "X-Apple-OAuth-Response-Type": "code",

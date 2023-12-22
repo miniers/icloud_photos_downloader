@@ -387,8 +387,8 @@ def download_builder(
         dry_run: bool) -> Callable[[PyiCloudService], Callable[[Counter, PhotoAsset], bool]]:
     """factory for downloader"""
     def state_(
-            icloud: PyiCloudService) -> Callable[[Counter, PhotoAsset], bool]:
-        def download_photo_(counter: Counter, photo: PhotoAsset) -> bool:
+    		icloud: PyiCloudService) -> Callable[[Counter, PhotoAsset], bool]:
+        def download_photo_(counter: Counter, photo: PhotoAsset, re_download: Callable[[Counter, PhotoAsset, Callable, int], bool], try_count:int) -> bool:
             """internal function for actually downloading the photos"""
             filename = clean_filename(photo.filename)
             if skip_videos and photo.item_type != "image":
@@ -498,6 +498,16 @@ def download_builder(
                         truncate_middle(download_path, 96)
                     )
                     file_exists = os.path.isfile(download_path)
+                    file_size = os.stat(
+                    download_path).st_size if file_exists else 0
+                    if file_exists and file_size != photo_size:
+                        logger.debug(
+                            "%s has incorrect file size (%s vs %s)",
+                            truncate_middle(download_path, 96),
+                            file_size,
+                            photo_size
+                        )
+                        file_exists = False
                 if file_exists:
                     counter.increment()
                     logger.debug(
@@ -510,10 +520,12 @@ def download_builder(
                 if only_print_filenames:
                     print(download_path)
                 else:
+                    version = photo.versions[download_size]
+                    photo_size = version["size"]
                     truncated_path = truncate_middle(download_path, 96)
                     logger.debug(
-                        "Downloading %s...",
-                        truncated_path
+                        "Downloading %s... file size: %s",
+                        truncated_path, photo_size
                     )
 
                     download_result = download.download_media(
@@ -540,6 +552,26 @@ def download_builder(
                             )
                         if not dry_run:
                             download.set_utime(download_path, created_date)
+                        file_size = os.stat(download_path).st_size
+                      
+                        if file_size != photo_size:
+                            logger.debug(
+                                "%s has incorrect file size (%s vs %s),begin to download again",
+                                truncated_path,
+                                file_size,
+                                photo_size
+                            )
+                            if try_count < 3:
+                                return re_download(counter, photo, re_download, try_count + 1)
+                            else:
+                                logger.debug(
+                                    "%s has incorrect file size (%s vs %s), give up because of too many retries",
+                                    truncated_path,
+                                    file_size,
+                                    photo_size
+                                )
+                                return False
+                            
                         logger.info(
                             "Downloaded %s",
                             truncated_path
@@ -905,7 +937,9 @@ def core(
                     item = next(photos_iterator)
                     if download_photo(
                             consecutive_files_found,
-                            item) and delete_after_download:
+                            item,
+                            download_photo,
+                            0) and delete_after_download:
 
                         def delete_cmd():
                             delete_local = delete_photo_dry_run if dry_run else delete_photo
